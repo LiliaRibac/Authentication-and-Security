@@ -4,10 +4,13 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require('mongoose');
+const session = require('express-session');
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose")
 // const encrypt = require('mongoose-encryption');
 // var md5 = require('md5');
-const bcrypt = require('bcrypt');
-const saltRounds = 10;
+// const bcrypt = require('bcrypt');
+// const saltRounds = 10;
 
 
 const app = express();
@@ -20,15 +23,36 @@ app.use(bodyParser.urlencoded({
   extended: true
 }));
 
+
+app.use(session({
+  secret: "Our  little secret",
+  resave: false,
+  saveUninitialized: false,
+}))
+
+app.use(passport.initialize());
+app.use(passport.session());
+
 mongoose.connect('mongodb://localhost:27017/userDB', {
   useNewUrlParser: true
 });
+
+mongoose.set('useCreateIndex', true);
+
 
 const userSchema = new mongoose.Schema({
   email: String,
   password: String
 });
 
+userSchema.plugin(passportLocalMongoose);
+
+const User = new mongoose.model("User", userSchema);
+
+passport.use(User.createStrategy());
+
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 /*
 //mongoose-encryption password start
@@ -41,7 +65,7 @@ userSchema.plugin(encrypt, {
 
 
 
-const User = new mongoose.model("User", userSchema);
+
 
 
 app.get("/", function (req, res) {
@@ -58,6 +82,8 @@ app.get("/register", function (req, res) {
   res.render("register")
 })
 
+/*
+md5 pw && bcrypt
 app.post("/register", function (req, res) {
 
   bcrypt.hash(req.body.password, saltRounds).then(function (hash) {
@@ -77,7 +103,7 @@ app.post("/register", function (req, res) {
   });
 
 });
-
+*/
 
 /* 
  Here is for md5 pw
@@ -85,10 +111,7 @@ app.post("/login", function (req, res) {
   const username = req.body.username;
  const password = md5(req.body.password);
 
-  
-
-
-  User.findOne({
+ User.findOne({
     email: username
   }, function (err, foundUser) {
     if (err) {
@@ -104,6 +127,8 @@ app.post("/login", function (req, res) {
 });
 */
 
+/*
+//bcrypt
 app.post("/login", function (req, res) {
   const username = req.body.username;
   const password = req.body.password;
@@ -124,8 +149,56 @@ app.post("/login", function (req, res) {
       }
     }
   });
-
 });
+*/
+
+app.get("/secrets", function (req, res) {
+  if (req.isAuthenticated()) {
+    res.render("secrets");
+  } else {
+    res.redirect("/login")
+  }
+})
+
+app.get("/logout", function(req, res){
+  req.logout();
+  res.redirect('/');
+})
+
+app.post("/register", function (req, res) {
+
+  User.register({
+    username: req.body.username
+  }, req.body.password, function (err, user) {
+    if (err) {
+      console.log(err);
+      res.redirect("/register");
+    } else {
+      passport.authenticate("local")(req, res, function () {
+        res.redirect("/secrets");
+      })
+    }
+  })
+})
+
+app.post("/login", function (req, res) {
+
+  const user = new User({
+     username: req.body.username,
+     password: req.body.password
+  });
+
+  req.login(user,function(err){
+    if(err){
+      console.log(err)
+    }else{
+      passport.authenticate("local")(req, res, function () {
+        res.redirect("/secrets");
+      })
+    }
+  })
+})
+
 
 app.listen(4000, function () {
   console.log("Server started on port 4000");
